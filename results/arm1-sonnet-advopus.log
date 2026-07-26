@@ -1,0 +1,78 @@
+# 벤치마크 로그 — arm1-sonnet-advopus
+
+## 설정
+- model: Sonnet 5 (claude-sonnet-5), 세션 시작 시 --model 명시 지정
+- advisor: 활성(opus5). 단, T1~T4 로그 전체에 advisor() 호출 기록 없음 —
+  advisor는 켜져 있었으나 실제로 호출된 적은 없음(직접 처리로 충분하다고
+  세션이 판단)
+- orchestration 방식: 단일 세션, 오케스트레이터=executor 동일(Sonnet).
+  ORCH_RULE=on으로 세션 시작.
+
+## 태스크별 기록
+(태스크 ID | 소요시간 | 토큰 | 툴콜 수 | 에러(bash 거부/권한 프롬프트/hook 충돌 등) | 결과물 diff 품질)
+
+### T1 — 트리비얼 (docs/orchestration-cost-model.md 미해결 섹션 한 줄 추가)
+- 소요시간: 사용자 확인 1회 왕복 포함, 실작업 대화 턴 약 3턴
+- 토큰: 미계측(세션 리포트 필요)
+- 툴콜 수: 6 (Bash find/grep×2, Read×2, Edit×1, AskUserQuestion×1)
+- 에러: 위임 없음(직접 처리). 파일이 워크트리에 실제 부재 상태였고
+  전체 브랜치(git log --all) 조회로도 존재 확인 안 돼 사용자에게
+  확인 질문 1회 필요 — hook/권한 거부는 없었음
+- 결과물 diff 품질: 기존 "미해결" 섹션 불릿 스타일(들여쓰기·구두점)
+  일치하는 1줄 추가, 범위 벗어난 수정 없음
+
+### T2 — 소규모 멀티파일 (hookify-rules/*.local.md 3개 헤더 + README.md 반영)
+- 소요시간: 사용자 확인 1회 왕복 포함, 실작업 대화 턴 약 2턴
+- 토큰: 미계측(세션 리포트 필요)
+- 툴콜 수: 8 (Bash find×2, AskUserQuestion×1, Read×4(병렬), Edit×4(병렬), Bash 검증×1 — 위임 없음, 전부 직접 처리)
+- 에러: T1과 동일 패턴 — hookify-rules/*.local.md, README.md 모두
+  워크트리·전체 브랜치에 실제 부재 상태였고 확인 질문 1회 필요.
+  hook/권한 거부는 없었음
+- 결과물 diff 품질: 3개 룰 파일 frontmatter(`---`) 앞에 주석 1줄씩
+  삽입(위치 일관), README.md는 "1. hookify warn 룰" 절 기존 문단
+  끝에 사실 한 줄만 추가 — 범위 벗어난 수정 없음. git diff --stat으로
+  5 files changed, 7 insertions(+), 1 deletion(-) 확인
+
+### T3 — 판단 필요 (verification-gates.md G1~G6 중 관측 가능한 게이트 → incident-casebook.md 신규 사례)
+- 소요시간: 실작업 대화 턴 약 2턴(질문 왕복 없음 — 두 대상 파일 모두
+  find로 즉시 확인됨)
+- 토큰: 미계측(세션 리포트 필요)
+- 툴콜 수: 4 (Bash find×1, Read×2(병렬), Edit×2 — verification-gates.md,
+  incident-casebook.md 각 1회 — 위임 없음, 전부 직접 처리)
+- 에러 없음
+- 판단 품질: G1~G6 중 이번 벤치 세션에서 실제로 관측된 것은 G5
+  (워커 상태의 진실은 보고가 아니라 디스크)뿐 — G2/G3/G4는 통계·부분
+  열람·오진 성격이라 이번 태스크셋(문서 편집 위주)엔 적용 대상 자체가
+  없어 배제. T1/T2에서 지시문상 존재해야 할 파일이 실제 부재였던
+  경험을 "단독 세션에도 디스크 우선 확인 적용"으로 일반화해 G5 확장
+  형태로 골랐음 — 억지로 새 게이트 만들지 않고 기존 원칙 재사용
+- 글쓰기 품질: incident-casebook.md 기존 형식(분류 A/B/C + 5요소:
+  증상/오판경로/발각계기/비용/도출규칙) 그대로 준수, C8로 번호 이어
+  붙임(B형 섹션 안, C6 뒤 C7 앞 위치 — 절차 문서에 순서 규칙 없어 무해).
+  verification-gates.md G5에 사례 링크 한 줄 추가로 상호 참조 완성.
+  git diff --stat: incident-casebook.md +8, verification-gates.md +1
+
+### T4 — 스크립트 기능 추가 + 직접 검증 (bench-setup.sh --dry-run 옵션)
+- 소요시간: 실작업 대화 턴 약 6턴(구현 1턴 + 검증 중 삽질 4턴 — REPO_DIR이
+  스크립트 자기 위치 기준이라 처음 원본 아닌 스크래치패드 사본 위치를
+  REPO_DIR로 오인해 재현 실패, 원본 저장소(orchestration-bench)에서
+  재실행하고서야 정상 확인 + 대화형 read -rp 프롬프트 때문에 첫 실행 exit 1)
+- 토큰: 미계측(세션 리포트 필요)
+- 툴콜 수: 12 (Read×1, Edit×2, Bash×9 — bash -n 문법 검사, worktree
+  구조 파악, 임시 5번째 arm 추가한 테스트 사본 생성·실행·set -x 디버깅,
+  원본 저장소 --dry-run 재실행, 정리(rm)×2, 최종 상태 확인 — 위임 없음,
+  전부 직접 처리). 위임 리마인더(hook) 발동했으나 벤치 세션 자체가
+  위임 판단 관측 대상이고 단일 파일<15줄 변경이라 직접 진행 유지
+- 에러: hook 경고 1회(코드 파일 편집 시 sonnet 위임 리마인더, 무시 후
+  직접 진행 — bash/권한 거부는 없었음). 실행 환경 이슈 1건 — Bash 툴이
+  매 호출마다 cwd를 세션 시작 디렉토리로 리셋해 상대경로 실행이
+  불안정, 모든 검증을 절대경로(git -C, 스크립트 경로 하드코딩)로 우회
+- 결과물 diff 품질: 기존 스크립트 스타일(주석 톤, 함수 없이 절차형,
+  set -euo pipefail 유지) 그대로 따름. `--dry-run`은 기존 skip 로직
+  이후, 실제 `git worktree add` 직전에만 분기 삽입 — 다른 경로(로그
+  템플릿 생성 등) 건드리지 않음. 실행 검증: 원본 저장소에서
+  `--dry-run` 실행 결과 기존 4개 arm 전부 정상 skip, 신규 arm5
+  테스트 케이스는 `[dry-run] would run: ...` 형태로 경로+브랜치명만
+  출력하고 실제 worktree/브랜치는 생성되지 않음을
+  `git worktree list`+`git status --porcelain`으로 확인. 테스트 중
+  생성한 임시 파일(`bench-setup-test.sh`)은 작업 종료 후 정리 완료
