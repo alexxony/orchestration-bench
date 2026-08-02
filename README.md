@@ -1,5 +1,7 @@
 # orchestration-bench
 
+[github.com/alexxony/orchestration-bench](https://github.com/alexxony/orchestration-bench)
+
 Claude Code 세션에서 model / advisor / 오케스트레이션 방식(단일 세션,
 오케스트레이터-executor 분리, 자동화 루프 등)을 바꿔가며 동일한 태스크셋을
 실행하고, 위임 판단·에러·결과물 품질을 비교하기 위한 벤치마크 하네스다.
