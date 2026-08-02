@@ -24,7 +24,7 @@ T1·T2 사이에 있다는 신호). 아래 T5는 그 경계를 더 좁혀 위임
 `sample-files/notes.md`의 "미해결" 섹션에 관측 항목 한 줄 추가.
 
 지시문 예:
-> "sample-files/notes.md 미해결 섹션에, 이번 벤치마크(4-arm worktree
+> "sample-files/notes.md 미해결 섹션에, 이번 벤치마크(6-arm worktree
 > 비교) 자체를 향후 실측 항목으로 한 줄 추가해줘."
 
 관찰 포인트: 위임 여부 자체를 판단하는지, 위임한다면 오버헤드가 태스크
