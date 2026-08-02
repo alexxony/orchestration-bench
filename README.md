@@ -22,19 +22,23 @@ Claude Code 세션에서 model / advisor / 오케스트레이션 방식(단일 �
 ```
 
 arm마다 별도 터미널을 열고(또는 순차로), 각 worktree 안에서
-`bench-tasks.md`의 지시문을 그대로 세션에 던진다. arm별로 model/advisor/
-오케스트레이션 방식을 다르게 설정해서 비교한다 — 예:
+`bench-tasks.md`의 지시문을 그대로 세션에 던진다. 3축(구조/모델/advisor)을
+각각 독립 2셀(baseline vs treatment)로 분리해서 비교한다 — 교차 매트릭스
+아님, 팩터 분리 이유는 `docs/reinforcement-plan.md` 참조:
 
-| arm | model | advisor | orchestration |
+| arm | 구조 | 모델 | advisor(ORCH_RULE) |
 |---|---|---|---|
-| arm1 | Sonnet | 활성 | 단일 세션 |
-| arm2 | Opus | 비활성 | 단일 세션 |
-| arm3 | Opus(오케스트레이터) | 없음 | Sonnet executor 위임 |
-| arm4 | 자유 | 자유 | 자동화 루프 등 |
+| arm1-struct-single-base | single | sonnet | off (baseline) |
+| arm2-struct-orch | orch(오케스트레이터+executor 위임 가능, 지시 없음) | sonnet | off |
+| arm3-model-sonnet-base | single | sonnet | off (baseline 반복) |
+| arm4-model-opus | single | opus | off |
+| arm5-advisor-off-base | single | sonnet | off (baseline 반복) |
+| arm6-advisor-on | single | sonnet | **on** |
 
 각 태스크 완료 후 결과(소요시간/토큰/툴콜수/에러/diff품질)를
-`~/workspace/.bench/results/<arm-name>.log`에 기록한다. `bench-setup.sh`가
-로그 템플릿을 자동 생성해준다.
+`~/workspace/.bench/results/<arm-name>.log`(자유서술) +
+`<arm-name>.jsonl`(기계가독)에 기록한다. `bench-setup.sh`가 로그 템플릿을
+자동 생성해준다.
 
 전체 태스크 끝나면:
 
@@ -42,6 +46,17 @@ arm마다 별도 터미널을 열고(또는 순차로), 각 worktree 안에서
 ./bench-teardown.sh          # worktree 정리, 로그는 보존
 ./bench-teardown.sh --purge-results  # 로그까지 삭제
 ```
+
+## 결과
+
+- [`results-summary-6arm.md`](results-summary-6arm.md) — 6-arm 실행(T1~T5b)
+  종합 비교. 핵심: 30개 태스크 중 위임은 arm6(advisor-on) T2 단 1건뿐 —
+  구조축·모델축은 자율 위임을 유발하지 않고 advisor 텍스트 지시만이
+  위임을 실제로 발생시킴. 토큰·캐시 축 포함.
+- [`docs/reinforcement-plan.md`](docs/reinforcement-plan.md) — 구 4-arm
+  confound 지적부터 6-arm 팩터 분리 설계 배경, claude-smart 전역 훅을
+  매개로 한 세션 간 정보 유출 부수 발견까지.
+- 구 4-arm 결과(참고용, confound 있음): [`results-summary.md`](results-summary.md)
 
 ## 관찰 포인트
 
