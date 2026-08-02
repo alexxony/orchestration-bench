@@ -6,6 +6,17 @@ Claude Code 세션에서 model / advisor / 오케스트레이션 방식(단일 �
 오케스트레이터-executor 분리, 자동화 루프 등)을 바꿔가며 동일한 태스크셋을
 실행하고, 위임 판단·에러·결과물 품질을 비교하기 위한 벤치마크 하네스다.
 
+## 실험 동기
+
+원래는 model=Sonnet + Claude Code 내장 advisor(fable) 조합으로 오케스트레이션을
+운용하려 했으나, bash 실행 시 advisor 모드가 지속되지 않고 끊기는 문제가
+있었다. 우회책으로 오케스트레이터=fable(Opus) + executor=Sonnet 구조로
+전환했는데, 이번엔 토큰 소모가 크고 fable이 사소한 사항까지 직접
+처리해버리는 비효율이 반복 관측됐다. 이 비효율이 오케스트레이션 구조
+자체 때문인지, 아니면 모델 티어나 advisor 지시 유무 때문인지 구분이 안 돼
+6-arm 실험으로 원인을 분리해봤다 — 상세 결과는
+[`results-summary-6arm.md`](results-summary-6arm.md) 참조.
+
 ## 구조
 
 - `bench-setup.sh` — arm 4개(각각 별도 git worktree + 브랜치)를 생성한다.
