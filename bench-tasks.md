@@ -1,12 +1,21 @@
 # 벤치마크 태스크 셋
 
-4개 arm(터미널/세션)에 동일하게 순서대로 던진다. 각 태스크 완료 후
-`~/workspace/.bench/results/<arm-name>.log` 에 기록: 소요시간 / 토큰 /
-툴콜 수 / 에러(bash 거부·권한 프롬프트·hook 충돌 등) / 결과물 diff 품질.
+6개 arm(터미널/세션)에 동일하게 순서대로 던진다. 각 태스크 완료 후
+`~/workspace/.bench/results/<arm-name>.log`(자유서술) +
+`<arm-name>.jsonl`(기계가독, 태스크당 1줄: arm/task/elapsed_sec/toolcalls/
+delegations/errors/files_changed/insertions/deletions)에 기록.
 
 전제: 각 세션은 `~/workspace/.bench/<arm-name>/` 안에서 열 것 (worktree,
 `bench-setup.sh`로 생성). arm 간 파일 충돌 없음. 대상 파일은 전부
 `sample-files/`에 있는 더미 파일 — 실제 프로덕션 코드/문서가 아니다.
+model/advisor는 세션 시작 시 로그 템플릿 "설정" 값(bench-setup.sh가
+미리 채움) 그대로 유지 — 세션 중 재구성 금지.
+
+기존 T1~T4는 "전부 위임 안 함"으로 수렴한 sub-threshold 대조군으로
+유지한다(구 arm3 관측 근거: T1은 위임 안 함, T2/T4는 위임함 — 경계가
+T1·T2 사이에 있다는 신호). 아래 T5는 그 경계를 더 좁혀 위임 전환점을
+찾기 위한 신규 티어 — 구 arm3가 도출한 가설(위임 기준은 수정 파일 수가
+아니라 오케스트레이터가 **읽어야 하는** 파일/컨텍스트 양)을 테스트한다.
 
 ---
 
@@ -70,13 +79,39 @@ skip 분기로만 빠져 핵심 경로(실제 worktree add 출력)가 검증되�
 
 ---
 
+## T5 — 위임 임계점 탐색 (신규, 편집량 고정·읽기범위만 증가)
+
+T1(1파일, 위임 안 함)과 T2(4파일, 위임함) 사이 경계를 좁힌다. **편집량은
+T1과 동일(한 줄 추가)로 고정하고, 참조해야 하는 컨텍스트 양만 단계적으로
+늘린다** — 위임이 항상 발생하거나 항상 안 발생하는 티어는 정보량 0이므로
+교차점 근방을 노린다.
+
+### T5a — 읽기 2파일
+`sample-files/notes.md`에 한 줄 추가하되, 추가 전 `README.md`와
+`sample-files/rule-a.local.md` 스타일(용어·톤)을 참조해서 일치시키라고
+지시. (수정 파일은 1개, 참조만 2개로 늘어남)
+
+### T5b — 읽기 4파일
+T5a와 동일 편집 + `sample-files/rule-b.local.md`,
+`sample-files/rule-c.local.md`도 참조 대상에 추가. (수정 1파일,
+참조 4파일)
+
+관찰 포인트: 수정 파일 수는 T1/T5a/T5b 전부 1개로 동일 — 위임 여부가
+바뀐다면 원인은 참조(읽기) 범위 증가뿐. 바뀌는 지점이 곧 임계값.
+
+---
+
 ## 실행 순서
 
-T1 → T2 → T3 → T4 (비용 낮은 순). 중간에 특정 arm에서 심각한 에러
+T1 → T2 → T3 → T4 → T5a → T5b (비용 낮은 순, T5는 T1~T4 관측 이후
+경계 좁히기 목적이라 마지막 배치). 중간에 특정 arm에서 심각한 에러
 (무한 재시도, bash 완전 거부 등) 나오면 그 arm은 해당 태스크에서
 중단하고 로그에 사유만 기록 후 다음 태스크로 넘어간다.
 
 ## 종료 후
 
-전체 태스크 끝나면 `bench-teardown.sh`로 worktree 정리 (결과 로그는
-기본 보존, `--purge-results`로만 삭제).
+전체 태스크 끝나면 우선 `results/<arm>.jsonl` 전부를
+`results/compare.sh`(또는 `.py`, 별도 작성 예정)로 종합 비교 표 생성 —
+`results-summary.md` 손대조 반복 지양. 그 다음 `bench-teardown.sh`로
+worktree 정리(diff export 자동 강제, 결과 로그는 기본 보존,
+`--purge-results`로만 삭제).
