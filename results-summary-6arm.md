@@ -103,6 +103,34 @@ arm1(96s)만 diff가 유독 큼(26/4) — 나머지 baseline 두 arm(91s/23·2,
 원인으로 각 arm 로그에 자체 명시됨. 위임 유무(둘 다 0)로도 설명 안 됨 —
 모델축·advisor축 해석 시 elapsed_sec보다 diff·toolcalls 축을 우선 참고할 것.
 
+## 토큰·캐시 축 (session-report 복구, 2026-08-02 24h 스코프)
+
+`session-report:session-report` 스킬로 각 arm worktree를 별도 프로젝트로
+분리 집계. worktree 경로 자체가 프로젝트 키로 잡혀 arm별 매핑이 정확함.
+
+| arm | api_calls | input tokens | cache 적중률 | output tokens | subagent 호출 | subagent tokens |
+|---|---|---|---|---|---|---|
+| arm1-struct-single-base | 55 | 6,119,809 | 92.5% | 16,203 | 0 | 0 |
+| arm2-struct-orch | 54 | 4,751,944 | 92.6% | 18,606 | 0 | 0 |
+| arm3-model-sonnet-base | 72 | 7,542,374 | 93.0% | 19,345 | 0 | 0 |
+| arm4-model-opus | 60 | 5,750,686 | 91.7% | 26,668 | 0 | 0 |
+| arm5-advisor-off-base | 82 | 8,170,788 | 94.9% | 22,828 | 0 | 0 |
+| arm6-advisor-on | 77 | 7,431,294 | 93.1% | 20,243 | **1** | **356,325** |
+
+**arm6만 subagent 토큰이 잡힘(356,325)** — T2에서 실제 발생한 위임(executor
+spawn) 비용이 정확히 이 항목에 반영됨. 나머지 5개 arm은 subagent_calls=0으로
+명확히 대조 — "위임은 advisor 지시문에서만 발생한다"는 delegations 필드
+관측과 토큰 데이터가 서로 독립적인 경로로 일치함(교차 검증).
+
+cache 적중률은 전 arm 91.7~94.9%로 큰 차이 없음 — model(opus/sonnet)이나
+구조(single/orch) 차이가 캐시 효율에 유의미한 영향을 주지 않음. arm5가
+가장 높음(94.9%)이나 baseline 반복(arm1 92.5%, arm3 93.0%)과 비교해도
+1~2%p 수준이라 노이즈 범위로 판단.
+
+output tokens는 arm4(opus, 26,668)가 가장 높음 — 다른 sonnet arm들
+(16k~22k) 대비 완만하게 큼. Opus가 더 장문으로 응답하는 경향과 일치하나
+N=1이라 확정적 결론은 아님.
+
 ## 부수 발견: claude-smart 전역 훅을 매개로 한 세션 간 정보 유출
 
 arm6 T2 위임 기록(delegations=1)에 대해 오케스트레이터·arm6 세션 양쪽에
@@ -118,8 +146,7 @@ agent_playbooks는 0건). 전역 플러그인이 세션 격리 전제를 우회�
 
 ## 미해결/후속 과제
 
-- 계획서 3번(session-report로 토큰/캐시 수치 복구) — 아직 미착수, 6-arm
-  완료 후 진행 예정.
+- ~~계획서 3번(session-report로 토큰/캐시 수치 복구)~~ — 완료, 위 "토큰·캐시 축" 절 참조.
 - T5a/T5b가 이번 편집량(1줄 고정)에서는 위임 전환점을 못 찾음 — 편집량
   자체를 늘리는 T6 티어 설계 필요(범위 밖, 후속 검토).
 - arm4/arm6 T4의 벽시계 지연 원인 미규명(외부 요인 추정, 재현 조건
