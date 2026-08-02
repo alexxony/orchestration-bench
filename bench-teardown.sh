@@ -28,6 +28,7 @@ ARM_NAMES=(
   "arm4-model-opus"
   "arm5-advisor-off-base"
   "arm6-advisor-on"
+  "arm7-orch-opus"
 )
 
 cd "$REPO_DIR"

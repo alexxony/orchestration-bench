@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 오케스트레이션 방식 벤치마크용 worktree 6개 생성 (2026-08-01 팩터 분리 재설계).
+# 오케스트레이션 방식 벤치마크용 worktree 생성 (2026-08-01 팩터 분리 재설계,
+# 2026-08-03 arm7 추가).
 # 각 arm = 별도 폴더 + 별도 브랜치 → 동시 세션 실행해도 워킹 디렉토리 충돌 없음.
 #
 # 팩터 분리 설계 — 3축(구조/모델/advisor) 각각 독립 2셀, 교차 안 함.
@@ -18,6 +19,10 @@
 # arm4 model-opus          : 구조=단일세션, model=opus, advisor=off
 # arm5 advisor-off-base    : 구조=단일세션, model=sonnet, advisor=off (기준셀 반복)
 # arm6 advisor-on          : 구조=단일세션, model=sonnet, advisor=on(ORCH_RULE=on)
+# arm7 orch-opus            : 구조=오케스트레이터+executor 위임(arm2와 동일 하네스),
+#                             model=opus(오케스트레이터), advisor=off — 원래 사용자가
+#                             실사용하던 우회 구성(구조=orch + 모델=opus 동시) 재현.
+#                             팩터 분리 축 밖의 결합 조건이라 baseline 반복에 안 넣음.
 #
 # model/advisor는 세션 시작 시 사용자가 직접 설정(스크립트가 강제 못 함) —
 # 아래 각 arm 로그 템플릿에 "설정" 값을 미리 채워 넣어 세션 중 재구성 방지.
@@ -41,6 +46,7 @@ ARMS=(
   "arm4-model-opus:bench/arm4-model-opus:single:opus:off"
   "arm5-advisor-off-base:bench/arm5-advisor-off-base:single:sonnet:off"
   "arm6-advisor-on:bench/arm6-advisor-on:single:sonnet:on"
+  "arm7-orch-opus:bench/arm7-orch-opus:orch:opus:off"
 )
 
 cd "$REPO_DIR"
