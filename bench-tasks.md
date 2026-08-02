@@ -110,8 +110,15 @@ T1 → T2 → T3 → T4 → T5a → T5b (비용 낮은 순, T5는 T1~T4 관측 �
 
 ## 종료 후
 
-전체 태스크 끝나면 우선 `results/<arm>.jsonl` 전부를
-`results/compare.sh`(또는 `.py`, 별도 작성 예정)로 종합 비교 표 생성 —
+전체 태스크 끝나면 우선 `~/workspace/.bench/results/<arm>.jsonl` 전부를
+`~/workspace/.bench/results/compare.sh`로 종합 비교 표 생성 —
 `results-summary.md` 손대조 반복 지양. 그 다음 `bench-teardown.sh`로
 worktree 정리(diff export 자동 강제, 결과 로그는 기본 보존,
 `--purge-results`로만 삭제).
+
+**주의**: 각 arm worktree(`~/workspace/.bench/<arm-name>/`) 안에도
+`results/`라는 이름의 폴더가 있다 — 이건 이 bench repo 자체가 git으로
+추적하는 **구 4-arm 로그**(arm1-sonnet-advopus.log 등, 폐기 예정)이지
+이번 실행 결과를 쓸 곳이 아니다. 실제 기록 대상은 항상 절대경로
+`~/workspace/.bench/results/<arm-name>.log` / `.jsonl` — worktree 안에서
+상대경로 `results/...`로 쓰면 잘못된 폴더(repo 내부)에 쓰인다.
