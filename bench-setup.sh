@@ -23,6 +23,11 @@
 #                             model=opus(오케스트레이터), advisor=off — 원래 사용자가
 #                             실사용하던 우회 구성(구조=orch + 모델=opus 동시) 재현.
 #                             팩터 분리 축 밖의 결합 조건이라 baseline 반복에 안 넣음.
+# arm8 orch-fable            : 구조=오케스트레이터+executor 위임(arm2·arm7과 동일
+#                             하네스), model=fable(오케스트레이터), advisor=off —
+#                             arm7에서 opus를 뺀 조건. 사용자가 실제로 쓰던 원래
+#                             구성(오케스트레이터=Fable, executor=Sonnet) 재현.
+#                             팩터 분리 축 밖의 결합 조건이라 baseline 반복에 안 넣음.
 #
 # model/advisor는 세션 시작 시 사용자가 직접 설정(스크립트가 강제 못 함) —
 # 아래 각 arm 로그 템플릿에 "설정" 값을 미리 채워 넣어 세션 중 재구성 방지.
@@ -47,6 +52,7 @@ ARMS=(
   "arm5-advisor-off-base:bench/arm5-advisor-off-base:single:sonnet:off"
   "arm6-advisor-on:bench/arm6-advisor-on:single:sonnet:on"
   "arm7-orch-opus:bench/arm7-orch-opus:orch:opus:off"
+  "arm8-orch-fable:bench/arm8-orch-fable:orch:fable:off"
 )
 
 cd "$REPO_DIR"
