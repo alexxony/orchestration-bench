@@ -2,7 +2,9 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue) ![Shell](https://img.shields.io/badge/shell-bash-89e051) ![Arms](https://img.shields.io/badge/arms-9-orange)
 
-[github.com/alexxony/orchestration-bench](https://github.com/alexxony/orchestration-bench)
+[github.com/alexxony/orchestration-bench](https://github.com/alexxony/orchestration-bench) ·
+[live summary (EN)](https://alexxony.github.io/orchestration-bench/) ·
+[요약 페이지 (KO)](https://alexxony.github.io/orchestration-bench/index.ko.html)
 
 *Measures whether Claude Code actually delegates to subagents, and under
 which of three conditions (session structure, model tier, advisor
