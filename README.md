@@ -1,90 +1,197 @@
 # orchestration-bench
 
+![License](https://img.shields.io/badge/license-MIT-blue) ![Shell](https://img.shields.io/badge/shell-bash-89e051) ![Arms](https://img.shields.io/badge/arms-9-orange)
+
 [github.com/alexxony/orchestration-bench](https://github.com/alexxony/orchestration-bench)
 
-Claude Code 세션에서 model / advisor / 오케스트레이션 방식(단일 세션,
-오케스트레이터-executor 분리, 자동화 루프 등)을 바꿔가며 동일한 태스크셋을
-실행하고, 위임 판단·에러·결과물 품질을 비교하기 위한 벤치마크 하네스다.
+*Measures whether Claude Code actually delegates to subagents, and under
+which of three conditions (session structure, model tier, advisor
+instruction) it does — companion harness to
+[`claude-delegation-policy`](https://github.com/alexxony/claude-delegation-policy),
+the ORCH_RULE advisor rule this benchmark tests.*
 
-## 실험 동기
+## 1. What this is
 
-원래는 model=Sonnet + Claude Code 내장 advisor(fable) 조합으로 오케스트레이션을
-운용하려 했으나, bash 실행 시 advisor 모드가 지속되지 않고 끊기는 문제가
-있었다. 우회책으로 오케스트레이터=fable(Opus) + executor=Sonnet 구조로
-전환했는데, 이번엔 토큰 소모가 크고 fable이 사소한 사항까지 직접
-처리해버리는 비효율이 반복 관측됐다. 이 비효율이 오케스트레이션 구조
-자체 때문인지, 아니면 모델 티어나 advisor 지시 유무 때문인지 구분이 안 돼
-6-arm 실험으로 원인을 분리해봤다 — 상세 결과는
-[`results-summary-6arm.md`](results-summary-6arm.md) 참조.
+A git-worktree harness that runs the **same 6-task set across 9 isolated
+Claude Code sessions**, each with a different combination of structure
+(single session vs. orchestrator+executor), model tier (Sonnet / Opus /
+Fable), and advisor instruction (`ORCH_RULE` on/off) — then diffs the
+outcomes.
 
-## 구조
+- **54 task executions, 0 script errors, delegation in exactly 3.**
+- Delegation happened *only* when an explicit advisor instruction was
+  present (`ORCH_RULE=on`) — never from structure or model tier alone,
+  even when the model itself was the orchestrator (arm7/arm8: Opus/Fable
+  as orchestrator, 0/6 each).
+- When delegation *did* fire, it cost more than doing the task directly:
+  the Fable-orchestrated arm spent **~4.1× the subagent tokens** of the
+  Sonnet-orchestrated arm for roughly 2× the delegation count
+  (1,458,380 vs. 356,325 tokens).
+- A 10×-outlier task duration that looked like "model latency" in the
+  first pass turned out, after an N=3 repeat and raw transcript
+  timestamp analysis, to be **human bash-approval wait time** baked
+  into the elapsed-time metric — not a model or advisor effect at all.
 
-- `bench-setup.sh` — arm 4개(각각 별도 git worktree + 브랜치)를 생성한다.
-  arm 이름/브랜치는 스크립트 상단 `ARMS` 배열에서 정의 — 원하는 만큼
-  추가/수정 가능.
-- `bench-tasks.md` — 각 arm에서 순서대로 실행할 태스크 T1~T4 정의.
-  트리비얼 → 소규모 멀티파일 → 판단 필요 → bash 스트레스, 난이도 순.
-- `bench-teardown.sh` — worktree 정리(결과 로그는 기본 보존).
-- `sample-files/` — 태스크 대상이 되는 더미 파일들. 실제 프로덕션 코드가
-  아니라 벤치마크 전용 샘플이다.
+Full data: [`results-summary-6arm.md`](results-summary-6arm.md) (filename
+predates the 9-arm expansion; kept for git history — content is current).
 
-## 사용법
+## 2. Why this is needed
+
+This harness exists because of a real incident, not a hypothesis. The
+original setup was `model=Sonnet` + Claude Code's built-in advisor
+(Fable) — the advisor kept dropping mid-session during bash execution.
+The workaround was to run **Fable as the main session model**
+(orchestrator) with Sonnet doing the executing. That fixed the
+disconnects but introduced a new, harder-to-pin-down problem: heavy
+token consumption, and the orchestrator handling trivial edits itself
+instead of delegating. It wasn't obvious whether that inefficiency came
+from the orchestration *structure*, the *model tier*, or just the
+absence of an explicit delegation instruction.
+
+Three confounded variables can't be debugged by staring at one
+production session, so this benchmark isolates them:
+
+- **Factor separation, not a full factorial.** Structure, model, and
+  advisor are each tested as an independent 2-cell contrast
+  (baseline vs. treatment) against a shared baseline (arm1/3/5,
+  repeated 3× for session-to-session noise, not statistical power on
+  any single contrast). Crossing all three axes would confound results
+  exactly like the original incident did — arm7/8/9 exist specifically
+  to check the *combined* condition the user was actually running,
+  outside the separated design.
+- **Every claim is falsifiable against a logged transcript.** Each task
+  execution writes a machine-readable `.jsonl` row (elapsed_sec,
+  toolcalls, delegations, errors, diff stats) plus a free-text `.log` —
+  self-reported claims are cross-checked against `git diff --stat` and,
+  when a number looked wrong, against raw session JSONL timestamps
+  (see the T4-anomaly finding below).
+- **Negative and self-correcting results are kept, not filtered.** The
+  original premise — "Fable-as-orchestrator wastes tokens because it
+  does everything itself" — is *not* what arm8 (the direct
+  reproduction) shows; the actual cost only appears once delegation is
+  turned on (arm9). A wall-clock anomaly attributed to "model response
+  latency" in the first write-up was later traced to a permission
+  prompt and the hypothesis was retracted in place, with the repeat
+  experiment that disproved it committed alongside it.
+
+## 3. How it works
+
+```mermaid
+flowchart LR
+    subgraph Setup
+        A[bench-setup.sh] -->|git worktree add| B["9 isolated worktrees\n.bench/arm1..arm9"]
+        A --> C["per-arm log template\n.jsonl + .log"]
+    end
+    subgraph Session["Per-arm session (manual)"]
+        B --> D["claude --model <tier>\n[ORCH_RULE=on]"]
+        D --> E["T1..T5b\n(bench-tasks.md)"]
+        E -->|direct edit| F[sample-files/]
+        E -->|delegate| G[subagent / executor]
+        G --> F
+        E --> H["append result row\nresults/<arm>.jsonl"]
+    end
+    subgraph Analysis
+        H --> I[compare.sh]
+        I --> J[results-summary-6arm.md]
+    end
+    K[bench-teardown.sh] -->|diff export, then remove| B
+```
+
+```mermaid
+flowchart LR
+    S[SessionStart hook] --> R{ORCH_RULE env var}
+    R -->|off, default| N[no injection\nmodel decides unassisted]
+    R -->|on| I["inject ORCH_RULE\ndelegation-policy block\n(orch-rule-injector.py)"]
+    I --> M[model session]
+    N --> M
+    M -->|advisor present| DEL[delegates to subagent]
+    M -->|advisor absent| DIR[handles directly]
+```
+
+The second diagram is the actual load-bearing finding: structure and
+model tier feed into the same session either way — only the
+`ORCH_RULE` branch changed delegation behavior in 54/54 task runs.
+
+### Repository layout
+
+```
+orchestration-bench/
+├── bench-setup.sh                  # provisions the 9 arm worktrees (ARMS array)
+├── bench-teardown.sh               # diff-exports + removes arm worktrees
+├── bench-t4-repeat-setup.sh        # N=3 T4-only repeat harness (anomaly repro)
+├── bench-t4-repeat-teardown.sh     # teardown for the above
+├── bench-tasks.md                  # T1-T5b task definitions, run in order
+├── sample-files/                   # dummy edit targets — not production code
+├── results/                        # per-arm .log + .jsonl, compare.sh output
+├── results-summary-6arm.md         # full 9-arm comparison (see note above on filename)
+├── results-summary.md              # legacy 4-arm results (confounded, reference only)
+├── docs/
+│   ├── reinforcement-plan.md       # why 4-arm → 6-arm factor separation, cross-session leak finding
+│   ├── incident-casebook.md
+│   ├── orchestration-cost-model.md
+│   └── verification-gates.md
+└── hookify-rules/                  # local hook policies used during arm sessions
+```
+
+### Run
 
 ```bash
 ./bench-setup.sh
 ```
 
-arm마다 별도 터미널을 열고(또는 순차로), 각 worktree 안에서
-`bench-tasks.md`의 지시문을 그대로 세션에 던진다. 3축(구조/모델/advisor)을
-각각 독립 2셀(baseline vs treatment)로 분리해서 비교한다 — 교차 매트릭스
-아님, 팩터 분리 이유는 `docs/reinforcement-plan.md` 참조:
-
-| arm | 구조 | 모델 | advisor(ORCH_RULE) |
-|---|---|---|---|
-| arm1-struct-single-base | single | sonnet | off (baseline) |
-| arm2-struct-orch | orch(오케스트레이터+executor 위임 가능, 지시 없음) | sonnet | off |
-| arm3-model-sonnet-base | single | sonnet | off (baseline 반복) |
-| arm4-model-opus | single | opus | off |
-| arm5-advisor-off-base | single | sonnet | off (baseline 반복) |
-| arm6-advisor-on | single | sonnet | **on** |
-
-각 태스크 완료 후 결과(소요시간/토큰/툴콜수/에러/diff품질)를
-`~/workspace/.bench/results/<arm-name>.log`(자유서술) +
-`<arm-name>.jsonl`(기계가독)에 기록한다. `bench-setup.sh`가 로그 템플릿을
-자동 생성해준다.
-
-전체 태스크 끝나면:
+This creates one git worktree + branch per arm under `~/workspace/.bench/`.
+Open a terminal per arm (or run sequentially — tasks are order-dependent,
+T3 references T1/T2 output) and start the session with the arm's
+configured model/advisor:
 
 ```bash
-./bench-teardown.sh          # worktree 정리, 로그는 보존
-./bench-teardown.sh --purge-results  # 로그까지 삭제
+cd ~/workspace/.bench/<arm-name>
+claude --model <sonnet|opus|fable>          # advisor off
+ORCH_RULE=on claude --model <sonnet|opus|fable>   # advisor on
 ```
 
-## 결과
+Paste `bench-tasks.md`'s T1→T5b instructions verbatim into the session.
+Each task appends one row to `results/<arm-name>.jsonl` and a narrative
+entry to `results/<arm-name>.log`.
 
-- [`results-summary-6arm.md`](results-summary-6arm.md) — 6-arm 실행(T1~T5b)
-  종합 비교. 핵심: 30개 태스크 중 위임은 arm6(advisor-on) T2 단 1건뿐 —
-  구조축·모델축은 자율 위임을 유발하지 않고 advisor 텍스트 지시만이
-  위임을 실제로 발생시킴. 토큰·캐시 축 포함.
-- [`docs/reinforcement-plan.md`](docs/reinforcement-plan.md) — 구 4-arm
-  confound 지적부터 6-arm 팩터 분리 설계 배경, claude-smart 전역 훅을
-  매개로 한 세션 간 정보 유출 부수 발견까지.
-- 구 4-arm 결과(참고용, confound 있음): [`results-summary.md`](results-summary.md)
+```bash
+./results/compare.sh              # regenerate the cross-arm comparison table
+./bench-teardown.sh               # diff-export uncommitted work, remove worktrees
+./bench-teardown.sh --purge-results   # also delete the result logs
+```
 
-## 관찰 포인트
+## 4. Findings
 
-- **위임 여부**: 같은 태스크를 던져도 model/advisor/구조에 따라 직접
-  처리하는지 서브에이전트에 위임하는지가 달라진다. 위임이 "가능"한
-  것과 "실제로 일어나는" 것은 다르다 — advisor가 켜져 있어도 호출
-  안 될 수 있다.
-- **에러축**: bash 거부, 권한 프롬프트, hook 차단 발생 여부.
-- **diff 품질**: 결과물이 기존 스타일/형식을 얼마나 잘 따르는지, 판단이
-  필요한 태스크(T3)에서 근거를 얼마나 구체적으로 드는지.
+| # | Finding | Evidence |
+|---|---|---|
+| 1 | Delegation never fires from structure or model tier alone — only from an explicit advisor instruction. | 0/48 non-advisor tasks delegate (arm1-5, arm7, arm8); 3/6 advisor-on tasks delegate (arm6, arm9) |
+| 2 | The original "Fable wastes tokens by doing everything itself" premise is backwards. | arm8 (Fable orchestrator, advisor off) reproduces the original setup exactly: 0/6 delegation, no token anomaly |
+| 3 | The real cost shows up only once delegation is *on* — and costs more per delegation on Fable than Sonnet. | arm9 subagent tokens 1,458,380 vs. arm6's 356,325 (~4.1×) for 2 vs. 1 delegations; possibly confounded by arm9 T4 task size — flagged, not yet isolated |
+| 4 | A 1000s+ T4 duration outlier attributed to "model wall-clock latency" was a measurement artifact. | N=3 repeat + raw transcript timestamp analysis: the gap sits precisely between `PreToolUse:Bash` and `PostToolUse:Bash` — human permission-approval wait time, not model latency. Reproduced 3/3 on the arm it was structural to (arm4/Opus), 0/3 on the arm it first appeared on (arm6) — the original arm6 reading was a one-off, not a condition effect |
+| 5 | A global hook plugin (`claude-smart`) observed and re-injected corrective rules across supposedly isolated benchmark sessions. | direct query of `~/.reflexio/data/reflexio.db`: 38 rules generated in real time during the arm1-6 run window — a session-isolation leak orthogonal to the three measured axes |
 
-## 주의
+Every finding above is a link back to a specific table or paragraph in
+[`results-summary-6arm.md`](results-summary-6arm.md); none of the
+numbers here are restated from memory without a source row in that file
+or in `results/*.jsonl`.
 
-- 태스크 순서 의존적이다(T3가 T1/T2 결과를 참조하는 경우가 많음) — 병렬
-  N-에이전트 모드(예: team)로 태스크를 흩으면 이 의존성이 깨진다.
-- 자기보고를 그대로 믿지 말 것 — 각 arm 완료 후 로그 파일과 실제
-  `git diff --stat`을 오케스트레이터(사용자 세션)가 직접 대조해서
-  검증하는 것을 권장한다.
+## 5. Known limitations (not yet fixed)
+
+- **T5a/T5b's "increase read scope" manipulation is nullified when T2
+  already loaded the same files** — observed independently in arm7, 8,
+  and 9. A clean read of this task tier needs a fresh session, not a
+  continuation of T1-T4.
+- **`elapsed_sec` is unreliable for any task that triggers a bash
+  permission prompt** (see Finding 4) — compare `diff`/`toolcalls`
+  instead, or add a `--dangerously-skip-permissions` cell to isolate
+  pure model latency in a future run.
+- **The Fable-vs-Sonnet delegation cost ratio (Finding 3) is N=1 per
+  arm** and not yet separated from task-size confounding.
+- Global PreToolUse hooks inject guidance text into every call across
+  all arms equally — this doesn't break relative arm comparisons, but
+  means "no factor outside structure/model/advisor" is only true in an
+  environment with those hooks enabled.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
