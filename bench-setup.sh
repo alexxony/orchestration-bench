@@ -28,6 +28,13 @@
 #                             arm7에서 opus를 뺀 조건. 사용자가 실제로 쓰던 원래
 #                             구성(오케스트레이터=Fable, executor=Sonnet) 재현.
 #                             팩터 분리 축 밖의 결합 조건이라 baseline 반복에 안 넣음.
+# arm9 orch-fable-advisoron  : arm8과 동일 하네스(구조=orch, model=fable) +
+#                             advisor=on(ORCH_RULE=on). arm8(off)이 "fable이
+#                             자율판단만으로 위임 안 하고 혼자 처리해 토큰 낭비"
+#                             가설을 재현하는 베이스라인이고, arm9은 advisor 룰
+#                             (위임 지시)을 얹었을 때 그 비효율이 해소되는지
+#                             검증하는 짝 — 반드시 arm8과 페어로 비교. 팩터
+#                             분리 축 밖의 결합 조건이라 baseline 반복에 안 넣음.
 #
 # model/advisor는 세션 시작 시 사용자가 직접 설정(스크립트가 강제 못 함) —
 # 아래 각 arm 로그 템플릿에 "설정" 값을 미리 채워 넣어 세션 중 재구성 방지.
@@ -53,6 +60,7 @@ ARMS=(
   "arm6-advisor-on:bench/arm6-advisor-on:single:sonnet:on"
   "arm7-orch-opus:bench/arm7-orch-opus:orch:opus:off"
   "arm8-orch-fable:bench/arm8-orch-fable:orch:fable:off"
+  "arm9-orch-fable-advisoron:bench/arm9-orch-fable-advisoron:orch:fable:on"
 )
 
 cd "$REPO_DIR"

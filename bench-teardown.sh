@@ -30,6 +30,7 @@ ARM_NAMES=(
   "arm6-advisor-on"
   "arm7-orch-opus"
   "arm8-orch-fable"
+  "arm9-orch-fable-advisoron"
 )
 
 cd "$REPO_DIR"
