@@ -121,7 +121,12 @@ arm1~6 전 구간이 동일하게 이 조건 하에서 실행됨 — arm 간 상
 6-arm 결과 리뷰 중 사용자가 지적한 두 가지 미검증 지점. "실험 동기"
 절(README.md, results-summary-6arm.md)과 직결되므로 우선순위 높음.
 
-### (a) 내장 advisor(fable) 버그 재현 확인 — 먼저 수행
+### (a) 내장 advisor(fable) 버그 재현 확인 — 보류 (2026-08-03)
+
+**착수 시도했으나 차단됨.** Claude Code `/model` UI 확인 결과 Fable 5
+advisor 옵션이 "temporarily unavailable"로 표시돼 선택 자체가 불가
+(스크린샷 확인, 서비스 쪽 일시 중단으로 추정 — 코드 버그 아님). advisor
+복구될 때까지 이 실험은 실행할 수 없음, 순서를 (b)로 먼저 진행.
 
 원래 문제의식의 출발점: model=Sonnet + Claude Code 내장 advisor(fable)
 조합이 bash 실행 시 advisor 모드가 지속되지 않고 끊기는 버그가 있어서
@@ -143,7 +148,7 @@ arm1~6 전 구간이 동일하게 이 조건 하에서 실행됨 — arm 간 상
 결과가 바이너리(재현/미재현)로 나옴 — 별도 arm 인프라 없이 세션 하나로
 빠르게 확인 가능.
 
-### (b) arm7 — 원래 실사용 구성 재현 (구조=orch, 모델=opus)
+### (b) arm7 — 원래 실사용 구성 재현 (구조=orch, 모델=opus) — 완료 (2026-08-03)
 
 지금 6-arm은 팩터 분리를 위해 구조축(arm2: 구조=orch, model=sonnet)과
 모델축(arm4: model=opus, 구조=single)을 의도적으로 교차시키지
@@ -161,7 +166,21 @@ bench-tasks.md T1~T5b 동일 적용, 기존 arm과 동일 스키마(log/jsonl)�
 효과 없음"을 "결합해도 효과 없음"으로 일반화할 수 있는지 검증하는
 셈(비선형/상호작용 효과 확인).
 
+**실행 결과**: arm7도 0/6 위임 — arm2·arm4 개별 효과가 결합 시에도
+유지됨, 상호작용 효과 없음. "구조축·모델축은 개별로도 결합해도 위임을
+안 만든다"로 일반화 가능해짐. 상세 수치·해석은
+`results-summary-6arm.md`의 arm7 관련 절 참조. diff export는
+`~/workspace/.bench/results/arm7-orch-opus.{diff,stat,log,jsonl}`에
+보존, worktree는 teardown 완료.
+
+**부수 발견**: T3 실행 중 hook injection(context-mode 등 전역 PreToolUse
+훅)이 delegations/toolcalls/errors 세 필드 어디에도 안 잡히면서 매
+Bash/Read 호출마다 오염을 남기는 게 확인됨 — 6-arm "부수 발견"(claude-smart
+전역 훅 정보 유출)과 별개의 오염 경로. 상세는
+`results-summary-6arm.md` "부수 발견" 절.
+
 ### 실행 순서
 
-(a) 먼저(빠르고 원인 규명에 직결) → 결과에 따라 (b) 진행 여부·설계
-조정. 둘 다 별도 세션에서 사용자가 직접 재개 예정(2026-08-03~).
+~~(a) 먼저(빠르고 원인 규명에 직결) → 결과에 따라 (b) 진행 여부·설계
+조정.~~ (a)가 advisor 일시 중단으로 차단되면서 순서를 뒤집어 (b)를
+먼저 완료. (a)는 advisor 복구 후 재시도 필요.

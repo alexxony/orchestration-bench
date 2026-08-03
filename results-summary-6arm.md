@@ -1,4 +1,4 @@
-# 6-arm 오케스트레이션 벤치마크 — 종합 비교 (2026-08-02)
+# 6-arm 오케스트레이션 벤치마크 — 종합 비교 (2026-08-02, arm7 추가 2026-08-03)
 
 ## 실험 동기
 
@@ -39,6 +39,13 @@ baseline(구조=single, 모델=sonnet, advisor=off) 조건이 arm1/arm3/arm5에�
 | arm4-model-opus | single | opus | off |
 | arm5-advisor-off-base | single | sonnet | off (baseline 반복) |
 | arm6-advisor-on | single | sonnet | **on** |
+| arm7-orch-opus | orch(arm2와 동일 하네스) | opus | off |
+
+**arm7은 팩터 분리 축 밖의 결합 조건**(`docs/reinforcement-plan.md` (b) 항목) —
+6-arm은 구조축·모델축을 의도적으로 교차 안 시켰는데, 사용자가 실제로 쓰던
+우회 구성(오케스트레이터=Opus + executor=Sonnet, 즉 arm2·arm4 조건을 동시에
+켠 상태)을 재현한 arm이 없었음. arm2·arm4 개별 효과가 결합 시에도 유지되는지
+(비선형/상호작용 효과) 검증하려고 2026-08-03 추가 실행.
 
 태스크셋: T1(트리비얼) → T2(소규모 멀티파일) → T3(판단+글쓰기) → T4(bash
 스트레스) → T5a/T5b(위임 임계점 탐색, 편집량 고정·참조 파일 수만 0→2→4로 증가).
@@ -53,14 +60,22 @@ baseline(구조=single, 모델=sonnet, advisor=off) 조건이 arm1/arm3/arm5에�
 | arm4-model-opus | 직접 | 직접 | 직접 | 직접 | 직접 | 직접 | 0/6 |
 | arm5-advisor-off-base | 직접 | 직접 | 직접 | 직접 | 직접 | 직접 | 0/6 |
 | arm6-advisor-on | 직접 | **위임(1회)** | 직접 | 직접 | 직접 | 직접 | 1/6 |
+| arm7-orch-opus | 직접 | 직접 | 직접 | 직접 | 직접 | 직접 | 0/6 |
 
-30개 태스크 실행 중 위임은 **arm6 T2 단 1건**. 구조축(arm2, 오케스트레이터+executor
+36개 태스크 실행 중 위임은 **arm6 T2 단 1건**. 구조축(arm2, 오케스트레이터+executor
 위임이 하네스 수준에서 가능한 조건)도, 모델축(arm4, Opus 오케스트레이터)도
 자율적으로는 위임을 유발하지 않음 — **ORCH_RULE 텍스트 지시(advisor=on)만이
 위임을 실제로 발생시킴**. arm2의 T2 로그(사례집 기록): "orch 구조라 해도
 위임 지시 부재 + 파일 수 한 자릿수 + 동일 패턴 반복 조건이면 오케스트레이터
 역할의 세션도 직접 처리를 선택한다 — 구조축 자체보다 태스크 판단 복잡도가
 위임 여부를 더 강하게 결정한다."
+
+**arm7(구조=orch + 모델=opus 결합)도 0/6** — arm2·arm4 각각의 "위임 안 함"이
+결합 조건에서도 그대로 유지됨, 상호작용 효과 없음. 즉 "구조축·모델축은
+개별로도 위임을 안 만들고, 둘을 합쳐도 안 만든다"로 일반화 가능. 원래
+문제의식이었던 "오케스트레이터=Opus 우회 구성에서 fable이 사소한 것까지
+직접 처리"하던 현상이 이 arm에서 재현됐고, 이번 결과로는 그게 구조·모델
+결합의 부작용이 아니라 advisor 지시 부재의 결과로 재해석됨.
 
 ## T5a/T5b: 위임 임계점 탐색 결과
 
@@ -110,6 +125,12 @@ baseline(구조=single, 모델=sonnet, advisor=off) 조건이 arm1/arm3/arm5에�
 | arm4 | T5b | 23 | 4 | 1 | 1 | 0 | 0 |
 | arm5 | T5b | 14 | 6 | 1 | 1 | 0 | 0 |
 | arm6 | T5b | 14 | 5 | 1 | 1 | 0 | 0 |
+| arm7 | T1 | 35 | 6 | 1 | 1 | 0 | 0 |
+| arm7 | T2 | 40 | 9 | 4 | 5 | 1 | 0 |
+| arm7 | T3 | 60 | 4 | 1 | 7 | 0 | 0 |
+| arm7 | T4 | 150 | 11 | 1 | 59 | 8 | 0 |
+| arm7 | T5a | 35 | 3 | 1 | 1 | 0 | 0 |
+| arm7 | T5b | 40 | 4 | 1 | 1 | 0 | 0 |
 
 \* errors는 스크립트 결함이 아니라 세이프가드 정상 발동/자체 오편집
 즉시복구로 확인됨(각 arm 로그 각주 참조) — "bash 거부·권한 프롬프트·hook
@@ -125,6 +146,15 @@ arm1(96s)만 diff가 유독 큼(26/4) — 나머지 baseline 두 arm(91s/23·2,
 자릿수 — 실작업량이 아니라 벽시계 지연(모델 응답 대기, 턴 경계)이 지배적
 원인으로 각 arm 로그에 자체 명시됨. 위임 유무(둘 다 0)로도 설명 안 됨 —
 모델축·advisor축 해석 시 elapsed_sec보다 diff·toolcalls 축을 우선 참고할 것.
+arm7 T4(150s)는 arm1~5의 90~96s대보다는 다소 크지만 arm4/arm6의 이상치
+(1000s대)와는 자릿수가 다름 — diff 규모(+59/-8)도 6-arm 중 가장 커서,
+스크립트에 `--dry-run` 옵션을 추가하는 실제 구현 작업이 반영된 결과로
+해석됨(다른 arm의 T4 구현 범위와 정확히 동일하진 않을 수 있음, 개별 로그 참조).
+
+arm7 T5a·T5b(3·4 toolcalls)는 arm1~6 중 가장 적은 축에 속함 — README가
+이전 태스크(T2)에서 이미 컨텍스트에 올라와 T5a에서 재읽기가 생략된 것으로
+보임(로그 자체 명시, "측정 한계" 항목). T5a·T5b의 toolcalls 3 vs 4를
+그대로 "참조 파일 2개 vs 4개" 효과로 해석하면 안 됨.
 
 ## 토큰·캐시 축 (session-report 복구, 2026-08-02 24h 스코프)
 
@@ -167,6 +197,15 @@ agent_playbooks는 0건). 전역 플러그인이 세션 격리 전제를 우회�
 상대 비교는 유효하나, 각 arm이 "완전히 독립된 관측"이라는 전제는
 성립하지 않는다.
 
+**arm7에서 추가 확인된 오염 경로: context-mode 등 전역 PreToolUse 훅이
+매 Bash/Read 호출마다 가이드 텍스트를 주입.** 위임(delegations)·툴콜
+(toolcalls)·에러(errors) 세 필드 어디에도 안 잡히는 오염이라 jsonl 스키마로는
+발견 불가 — arm7 T3 로그에서 사례로 기록됨. 전역 훅이라 모든 arm에 동일하게
+걸리므로 arm 간 상대 비교 자체는 여전히 유효하지만, "구조축·모델축·advisor축
+외 요인은 없다"는 결론에는 "전역 훅이 켜진 환경에서"라는 단서가 필요함.
+후속 조치 후보: jsonl에 `hook_injections` 필드 추가, 또는 DISABLE_OMC/
+OMC_SKIP_HOOKS로 훅을 끈 별도 셀 확보해 오염분 차감.
+
 ## 미해결/후속 과제
 
 - ~~계획서 3번(session-report로 토큰/캐시 수치 복구)~~ — 완료, 위 "토큰·캐시 축" 절 참조.
@@ -176,3 +215,10 @@ agent_playbooks는 0건). 전역 플러그인이 세션 격리 전제를 우회�
   불명) — N≥3 반복 시 재관측되는지 확인 필요.
 - worktree 6개 모두 uncommitted 상태로 남아있음 — `bench-teardown.sh`가
   diff export를 자동 강제하므로 teardown 실행 전 반드시 그 경로로 정리할 것.
+- arm7 완료(2026-08-03) — `docs/reinforcement-plan.md` (b) 항목 종료.
+  diff export는 `~/workspace/.bench/results/arm7-orch-opus.{diff,stat,log,jsonl}`에
+  보존, worktree는 teardown됨. (a) 항목(내장 advisor=fable 버그 재현)은
+  Claude Code UI 상 Fable 5 advisor가 "temporarily unavailable"로 표시돼
+  현재 실행 불가 — advisor 복구 시까지 보류.
+- hook_injections 미계측 문제(위 "부수 발견" 절) — 다음 회차 벤치마크
+  설계 시 로그 스키마에 반영 필요, 이번 6+1-arm 결과엔 소급 적용 안 함.
