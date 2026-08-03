@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>orchestration-bench — does Claude Code actually delegate?</title>
+<style>
+  :root {
+    --fg:#1a1a1a; --mut:#5c5c5c; --accent:#b8860b; --card:#fafafa; --line:#e2e2e2;
+    --bg:#ffffff; --pill-bg:#fff3cc; --pill-line:#e6c26a; --code-bg:#f0f0f0;
+    --on:#2f7a3d; --off:#8a1f1f; --on-bg:#e7f5ea; --off-bg:#fbeaea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg:#e8e8e8; --mut:#a3a3a3; --accent:#e0b23d; --card:#1b1b1b; --line:#333;
+      --bg:#111; --pill-bg:#3a3110; --pill-line:#6b5a1c; --code-bg:#232323;
+      --on:#5fd97a; --off:#f28b8b; --on-bg:#173321; --off-bg:#3a1c1c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fg:#e8e8e8; --mut:#a3a3a3; --accent:#e0b23d; --card:#1b1b1b; --line:#333;
+    --bg:#111; --pill-bg:#3a3110; --pill-line:#6b5a1c; --code-bg:#232323;
+    --on:#5fd97a; --off:#f28b8b; --on-bg:#173321; --off-bg:#3a1c1c;
+  }
+  :root[data-theme="light"] {
+    --fg:#1a1a1a; --mut:#5c5c5c; --accent:#b8860b; --card:#fafafa; --line:#e2e2e2;
+    --bg:#ffffff; --pill-bg:#fff3cc; --pill-line:#e6c26a; --code-bg:#f0f0f0;
+    --on:#2f7a3d; --off:#8a1f1f; --on-bg:#e7f5ea; --off-bg:#fbeaea;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; color:var(--fg); line-height:1.6; background:var(--bg); }
+  .wrap { max-width:760px; margin:0 auto; padding:44px 20px 64px; }
+
+  .langbar { text-align:right; font-size:13px; margin-bottom:14px; }
+  .langbar a { color:var(--mut); text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:4px 10px; }
+  .langbar a:hover { border-color:var(--accent); color:var(--fg); }
+
+  h1 { font-size:28px; margin:0 0 8px; letter-spacing:-0.01em; }
+  .lede { color:var(--mut); font-size:16px; margin:0 0 22px; max-width:62ch; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 0 24px; }
+  .stat { border:1px solid var(--line); border-radius:10px; padding:14px 12px; text-align:center; background:var(--card); }
+  .stat .num { font-size:22px; font-weight:700; color:var(--accent); line-height:1.2; }
+  .stat .lbl { font-size:12px; color:var(--mut); margin-top:3px; }
+
+  section { margin-top:46px; }
+  h2 { font-size:20px; margin:0 0 4px; }
+  .h2sub { color:var(--mut); font-size:13.5px; margin:0 0 16px; }
+  .card { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:16px; margin:0 0 4px; }
+  .cap { font-size:13px; color:var(--mut); margin:10px 2px 0; }
+  .cap b { color:var(--fg); }
+  code { background:var(--code-bg); padding:1px 5px; border-radius:4px; font-size:12.5px; }
+  a { color:#3172d8; }
+  @media (prefers-color-scheme: dark) { a { color:#7aa6e8; } }
+  :root[data-theme="dark"] a { color:#7aa6e8; }
+  :root[data-theme="light"] a { color:#3172d8; }
+
+  .toggle-box { border:1px solid var(--line); border-radius:12px; background:var(--card); padding:20px; }
+  .toggle-row { display:flex; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+  .switch { position:relative; display:inline-block; width:56px; height:30px; flex:0 0 auto; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; cursor:pointer; inset:0; background:var(--off); border-radius:30px; transition:.25s; }
+  .slider::before { content:""; position:absolute; height:24px; width:24px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.25s; }
+  .switch input:checked + .slider { background:var(--on); }
+  .switch input:checked + .slider::before { transform:translateX(26px); }
+  .toggle-label { font-weight:700; font-size:15px; }
+  .toggle-state { font-size:13px; color:var(--mut); }
+  .rule-table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  .rule-table th, .rule-table td { border:1px solid var(--line); padding:8px 10px; text-align:left; }
+  .rule-table th { background:var(--code-bg); font-weight:600; }
+  .rule-row { transition:background .3s, opacity .3s; }
+  .badge { display:inline-block; font-size:11px; font-weight:700; padding:1px 8px; border-radius:9px; }
+  .badge.on { background:var(--on-bg); color:var(--on); }
+  .badge.off { background:var(--off-bg); color:var(--off); }
+  .result-line { margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); font-size:14px; }
+  .result-line .best { font-weight:700; }
+  .result-line.on .best { color:var(--on); }
+  .result-line.off .best { color:var(--off); }
+
+  .limits { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:16px 18px; }
+  .limits ul { margin:0; padding-left:20px; font-size:14px; }
+  .limits li { margin:8px 0; }
+
+  footer { margin-top:52px; padding-top:20px; border-top:1px solid var(--line); font-size:13.5px; color:var(--mut); }
+  .neighbors { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0 4px; }
+  .neighbors a { border:1px solid var(--line); border-radius:8px; padding:8px 12px; text-decoration:none; color:var(--fg); font-size:13.5px; background:var(--card); }
+  .neighbors a:hover { border-color:var(--accent); }
+  .neighbors .tag { color:var(--mut); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="langbar"><a href="index.ko.html">한국어</a></div>
+
+  <h1>orchestration-bench</h1>
+  <p class="lede">A 9-arm Claude Code benchmark asking one question: <b>what actually makes a
+     session delegate to a subagent</b> — session structure, model tier, or an explicit
+     advisor instruction? Answer: only the instruction, and it costs more than doing the
+     task directly.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="num">54</div><div class="lbl">task runs across 9 arms, 0 script errors</div></div>
+    <div class="stat"><div class="num">3</div><div class="lbl">delegations — all under advisor=on</div></div>
+    <div class="stat"><div class="num">4.1×</div><div class="lbl">subagent tokens, Fable vs Sonnet orchestrator</div></div>
+  </div>
+
+  <section>
+    <h2>Try it: ORCH_RULE off vs on</h2>
+    <p class="h2sub">Same 6-task set (T1–T5b), same structure/model options. Only the advisor instruction differs.</p>
+
+    <div class="toggle-box">
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="orchToggle"/>
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">ORCH_RULE</span>
+        <span class="toggle-state" id="toggleState">OFF — no delegation instruction injected</span>
+      </div>
+
+      <table class="rule-table">
+        <thead>
+          <tr><th>Arm</th><th>Task</th><th>Delegated?</th><th>Cost signal</th></tr>
+        </thead>
+        <tbody id="ruleBody"><!-- filled by JS --></tbody>
+      </table>
+
+      <div class="result-line off" id="resultLine">
+        <span class="best">0/48 tasks delegate.</span> Structure (orchestrator+executor harness) and
+        model tier (Opus, Fable as orchestrator) never trigger delegation on their own — arm1–5, 7, 8.
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The T4 outlier that wasn't model latency</h2>
+    <p class="h2sub">a 1000s+ duration spike, reproduced N=3, traced to the wrong cause on the first pass</p>
+    <div class="card">
+      <p style="margin:0 0 10px;">arm4 (Opus) and arm6 (Sonnet+advisor) each hit a T4 duration ~10× every
+      other arm (1062s / 1330s) while diff size and toolcalls stayed normal — first written up as
+      "model wall-clock latency." An N=3 repeat with raw transcript timestamp analysis found the gap
+      sits precisely between the <code>PreToolUse:Bash</code> and <code>PostToolUse:Bash</code> hook
+      events — i.e. <b>human bash-approval wait time</b>, not model processing.</p>
+      <p style="margin:0;">arm4 reproduced 3/3 (20–74 min gaps). arm6 reproduced 0/3 (86–99s, normal) —
+      the original arm6 reading was a one-off session artifact, not a condition effect. The hypothesis
+      was retracted in the results doc alongside the repeat data that disproved it.</p>
+    </div>
+    <p class="cap">Source: <a href="results-summary-6arm.md">results-summary-6arm.md</a>, "T4 시간축 이상치" section.</p>
+  </section>
+
+  <section>
+    <h2>Limits / not proven</h2>
+    <div class="limits">
+      <ul>
+        <li><b>No quality axis was measured.</b> Judgment tasks (T3) were never scored for output
+            quality by a human or a separate judge — "which model writes better" has no evidence here.</li>
+        <li><b>The four measured axes rank oppositely depending on the goal.</b> Delegation rate favors
+            advisor=on; token cost and speed favor advisor=off. There is no unified cost metric to
+            resolve this into a single ranking.</li>
+        <li><b>Almost everything is N=1.</b> Outside the baseline triplicate (arm1/3/5), every arm ran
+            once — repeat runs would raise confidence, not create a quality axis or a unified metric
+            that doesn't exist.</li>
+        <li><b>Task scope is trivial-to-medium only.</b> Whether this generalizes to production-scale
+            tasks is untested — delegation could plausibly become net-positive at larger scale.</li>
+        <li><b>Session independence isn't absolute.</b> A global hook plugin (claude-smart) was found
+            observing and re-injecting rules across supposedly isolated benchmark sessions — relative
+            arm comparisons hold, but "fully independent observation" doesn't.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    Source: <a href="https://github.com/alexxony/orchestration-bench">github.com/alexxony/orchestration-bench</a>
+    · Full methodology: <a href="results-summary-6arm.md">results-summary-6arm.md</a>
+    <div class="neighbors">
+      <a href="https://github.com/alexxony/claude-delegation-policy">claude-delegation-policy <span class="tag">— the ORCH_RULE advisor rule this benchmark tests</span></a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var toggle = document.getElementById('orchToggle');
+  var stateLabel = document.getElementById('toggleState');
+  var ruleBody = document.getElementById('ruleBody');
+  var resultLine = document.getElementById('resultLine');
+
+  var rowsOff = [
+    { arm: 'arm1–5', task: 'T1–T5b', deleg: 'No', signal: '0 subagent tokens', badge: 'off' },
+    { arm: 'arm7 (orch, Opus)', task: 'T1–T5b', deleg: 'No', signal: 'structure+model combined, still 0', badge: 'off' },
+    { arm: 'arm8 (orch, Fable)', task: 'T1–T5b', deleg: 'No', signal: 'real bypass config reproduced, still 0', badge: 'off' }
+  ];
+  var rowsOn = [
+    { arm: 'arm6 (Sonnet)', task: 'T2', deleg: 'Yes (1×)', signal: '356,325 subagent tokens · 93s vs ~40s baseline', badge: 'on' },
+    { arm: 'arm9 (Fable)', task: 'T2', deleg: 'Yes (1×)', signal: '123s, spawn overhead', badge: 'on' },
+    { arm: 'arm9 (Fable)', task: 'T4', deleg: 'Yes (1×)', signal: '1,458,380 subagent tokens total (2 delegations) · 183s', badge: 'on' }
+  ];
+
+  function badgeHtml(b) {
+    return ' <span class="badge ' + b + '">' + (b === 'on' ? 'DELEGATED' : 'DIRECT') + '</span>';
+  }
+
+  function render(on) {
+    var rows = on ? rowsOn : rowsOff;
+    ruleBody.innerHTML = rows.map(function (r) {
+      return '<tr class="rule-row">' +
+        '<td>' + r.arm + '</td>' +
+        '<td><code>' + r.task + '</code></td>' +
+        '<td>' + r.deleg + badgeHtml(r.badge) + '</td>' +
+        '<td>' + r.signal + '</td>' +
+        '</tr>';
+    }).join('');
+
+    if (on) {
+      stateLabel.textContent = 'ON — advisor instruction injected at session start';
+      resultLine.className = 'result-line on';
+      resultLine.innerHTML = '<span class="best">3/6 advisor-on tasks delegate.</span> Every time delegation ' +
+        'fires, the task also runs slower than its direct-processing baseline — spawn overhead, not free.';
+    } else {
+      stateLabel.textContent = 'OFF — no delegation instruction injected';
+      resultLine.className = 'result-line off';
+      resultLine.innerHTML = '<span class="best">0/48 tasks delegate.</span> Structure (orchestrator+executor harness) and ' +
+        'model tier (Opus, Fable as orchestrator) never trigger delegation on their own — arm1–5, 7, 8.';
+    }
+  }
+
+  toggle.addEventListener('change', function () { render(toggle.checked); });
+  render(toggle.checked);
+})();
+</script>
+
+</body>
+</html>

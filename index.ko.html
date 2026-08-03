@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>orchestration-bench — Claude Code가 정말로 위임하나?</title>
+<style>
+  :root {
+    --fg:#1a1a1a; --mut:#5c5c5c; --accent:#b8860b; --card:#fafafa; --line:#e2e2e2;
+    --bg:#ffffff; --pill-bg:#fff3cc; --pill-line:#e6c26a; --code-bg:#f0f0f0;
+    --on:#2f7a3d; --off:#8a1f1f; --on-bg:#e7f5ea; --off-bg:#fbeaea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg:#e8e8e8; --mut:#a3a3a3; --accent:#e0b23d; --card:#1b1b1b; --line:#333;
+      --bg:#111; --pill-bg:#3a3110; --pill-line:#6b5a1c; --code-bg:#232323;
+      --on:#5fd97a; --off:#f28b8b; --on-bg:#173321; --off-bg:#3a1c1c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fg:#e8e8e8; --mut:#a3a3a3; --accent:#e0b23d; --card:#1b1b1b; --line:#333;
+    --bg:#111; --pill-bg:#3a3110; --pill-line:#6b5a1c; --code-bg:#232323;
+    --on:#5fd97a; --off:#f28b8b; --on-bg:#173321; --off-bg:#3a1c1c;
+  }
+  :root[data-theme="light"] {
+    --fg:#1a1a1a; --mut:#5c5c5c; --accent:#b8860b; --card:#fafafa; --line:#e2e2e2;
+    --bg:#ffffff; --pill-bg:#fff3cc; --pill-line:#e6c26a; --code-bg:#f0f0f0;
+    --on:#2f7a3d; --off:#8a1f1f; --on-bg:#e7f5ea; --off-bg:#fbeaea;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; color:var(--fg); line-height:1.65; background:var(--bg); }
+  .wrap { max-width:760px; margin:0 auto; padding:44px 20px 64px; }
+
+  .langbar { text-align:right; font-size:13px; margin-bottom:14px; }
+  .langbar a { color:var(--mut); text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:4px 10px; }
+  .langbar a:hover { border-color:var(--accent); color:var(--fg); }
+
+  h1 { font-size:28px; margin:0 0 8px; letter-spacing:-0.01em; }
+  .lede { color:var(--mut); font-size:16px; margin:0 0 22px; max-width:62ch; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 0 24px; }
+  .stat { border:1px solid var(--line); border-radius:10px; padding:14px 12px; text-align:center; background:var(--card); }
+  .stat .num { font-size:22px; font-weight:700; color:var(--accent); line-height:1.2; }
+  .stat .lbl { font-size:12px; color:var(--mut); margin-top:3px; }
+
+  section { margin-top:46px; }
+  h2 { font-size:20px; margin:0 0 4px; }
+  .h2sub { color:var(--mut); font-size:13.5px; margin:0 0 16px; }
+  .card { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:16px; margin:0 0 4px; }
+  .cap { font-size:13px; color:var(--mut); margin:10px 2px 0; }
+  .cap b { color:var(--fg); }
+  code { background:var(--code-bg); padding:1px 5px; border-radius:4px; font-size:12.5px; }
+  a { color:#3172d8; }
+  @media (prefers-color-scheme: dark) { a { color:#7aa6e8; } }
+  :root[data-theme="dark"] a { color:#7aa6e8; }
+  :root[data-theme="light"] a { color:#3172d8; }
+
+  .toggle-box { border:1px solid var(--line); border-radius:12px; background:var(--card); padding:20px; }
+  .toggle-row { display:flex; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+  .switch { position:relative; display:inline-block; width:56px; height:30px; flex:0 0 auto; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; cursor:pointer; inset:0; background:var(--off); border-radius:30px; transition:.25s; }
+  .slider::before { content:""; position:absolute; height:24px; width:24px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.25s; }
+  .switch input:checked + .slider { background:var(--on); }
+  .switch input:checked + .slider::before { transform:translateX(26px); }
+  .toggle-label { font-weight:700; font-size:15px; }
+  .toggle-state { font-size:13px; color:var(--mut); }
+  .rule-table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  .rule-table th, .rule-table td { border:1px solid var(--line); padding:8px 10px; text-align:left; }
+  .rule-table th { background:var(--code-bg); font-weight:600; }
+  .rule-row { transition:background .3s, opacity .3s; }
+  .badge { display:inline-block; font-size:11px; font-weight:700; padding:1px 8px; border-radius:9px; }
+  .badge.on { background:var(--on-bg); color:var(--on); }
+  .badge.off { background:var(--off-bg); color:var(--off); }
+  .result-line { margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); font-size:14px; }
+  .result-line .best { font-weight:700; }
+  .result-line.on .best { color:var(--on); }
+  .result-line.off .best { color:var(--off); }
+
+  .limits { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:16px 18px; }
+  .limits ul { margin:0; padding-left:20px; font-size:14px; }
+  .limits li { margin:8px 0; }
+
+  footer { margin-top:52px; padding-top:20px; border-top:1px solid var(--line); font-size:13.5px; color:var(--mut); }
+  .neighbors { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0 4px; }
+  .neighbors a { border:1px solid var(--line); border-radius:8px; padding:8px 12px; text-decoration:none; color:var(--fg); font-size:13.5px; background:var(--card); }
+  .neighbors a:hover { border-color:var(--accent); }
+  .neighbors .tag { color:var(--mut); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="langbar"><a href="index.html">English</a></div>
+
+  <h1>orchestration-bench</h1>
+  <p class="lede">Claude Code 세션이 <b>실제로 서브에이전트에 위임하게 만드는 것이 무엇인지</b> 묻는
+     9-arm 벤치마크 — 세션 구조인지, 모델 티어인지, 아니면 명시적인 advisor 지시문인지. 답: 지시문뿐이고,
+     그마저도 직접 처리보다 비용이 더 든다.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="num">54</div><div class="lbl">9개 arm, 54개 태스크 실행, 스크립트 에러 0건</div></div>
+    <div class="stat"><div class="num">3</div><div class="lbl">위임 발생 — 전부 advisor=on 조건</div></div>
+    <div class="stat"><div class="num">4.1×</div><div class="lbl">subagent 토큰, Fable vs Sonnet 오케스트레이터</div></div>
+  </div>
+
+  <section>
+    <h2>직접 체험: ORCH_RULE off vs on</h2>
+    <p class="h2sub">같은 6개 태스크(T1~T5b), 같은 구조·모델 옵션. advisor 지시문 유무만 다름.</p>
+
+    <div class="toggle-box">
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="orchToggle"/>
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">ORCH_RULE</span>
+        <span class="toggle-state" id="toggleState">OFF — 위임 지시문 주입 안 됨</span>
+      </div>
+
+      <table class="rule-table">
+        <thead>
+          <tr><th>arm</th><th>태스크</th><th>위임 여부</th><th>비용 신호</th></tr>
+        </thead>
+        <tbody id="ruleBody"><!-- JS가 채움 --></tbody>
+      </table>
+
+      <div class="result-line off" id="resultLine">
+        <span class="best">48개 태스크 중 위임 0건.</span> 구조(오케스트레이터+executor 하네스)도
+        모델 티어(오케스트레이터=Opus·Fable)도 그 자체로는 위임을 유발하지 않음 — arm1~5, 7, 8.
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>모델 지연이 아니었던 T4 이상치</h2>
+    <p class="h2sub">1000초대 소요시간 급증, N=3 반복 재현, 첫 진단은 틀렸음</p>
+    <div class="card">
+      <p style="margin:0 0 10px;">arm4(Opus)·arm6(Sonnet+advisor)가 T4에서 다른 arm보다 10배 가까이 큰
+      소요시간(1062초·1330초)을 보였는데, diff 규모·툴콜수는 정상 — 처음엔 "모델 벽시계 지연"으로
+      기록됐다. N=3 반복 실행 + 원시 트랜스크립트 타임스탬프 분석 결과, 그 gap은 정확히
+      <code>PreToolUse:Bash</code>와 <code>PostToolUse:Bash</code> 훅 사이에 있었다 — 즉 모델 처리
+      시간이 아니라 <b>사람이 bash 실행 승인 프롬프트에서 대기한 시간</b>이었다.</p>
+      <p style="margin:0;">arm4는 3/3 재현(20~74분 gap), arm6은 3/3 재현 안 됨(86~99초, 정상 범위) —
+      원래 arm6 이상치는 조건 자체의 효과가 아니라 그 세션 1회의 우연이었다. 이 오판은 그것을
+      뒤집은 재실험 데이터와 함께 결과 문서에 정정·기록됐다.</p>
+    </div>
+    <p class="cap">출처: <a href="results-summary-6arm.md">results-summary-6arm.md</a>, "T4 시간축 이상치" 절.</p>
+  </section>
+
+  <section>
+    <h2>한계 / 증명되지 않은 것</h2>
+    <div class="limits">
+      <ul>
+        <li><b>품질 축을 측정하지 않았다.</b> 판단형 태스크(T3)의 결과물을 사람이나 별도 심사자가
+            채점한 적이 없다 — "어느 모델이 더 잘 쓰는가"를 뒷받침할 근거가 없다.</li>
+        <li><b>측정한 4개 축이 목적에 따라 우열이 뒤집힌다.</b> 위임 성사율은 advisor=on이 유리하고,
+            토큰 비용·속도는 advisor=off가 유리하다. 이를 하나의 순위로 합칠 단일 비용 지표가 없다.</li>
+        <li><b>거의 전부 N=1이다.</b> baseline 3반복(arm1/3/5)을 제외하면 각 arm은 1회만 실행됐다 —
+            반복 실행은 확신도만 높일 뿐, 존재하지 않는 품질 축이나 단일 비용 지표를 만들어내지 않는다.</li>
+        <li><b>태스크 규모가 트리비얼~중간에 한정된다.</b> 프로덕션 규모 태스크에도 이 결론이
+            일반화되는지는 미검증 — 규모가 커지면 위임이 오히려 순이익이 될 가능성을 배제 못 한다.</li>
+        <li><b>세션 독립성이 절대적이지 않다.</b> 전역 훅 플러그인(claude-smart)이 격리돼야 할 벤치마크
+            세션들을 관찰·재주입하는 것이 확인됐다 — arm 간 상대 비교는 유효하나 "완전히 독립된 관측"
+            이라는 전제는 성립하지 않는다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    소스: <a href="https://github.com/alexxony/orchestration-bench">github.com/alexxony/orchestration-bench</a>
+    · 전체 방법론: <a href="results-summary-6arm.md">results-summary-6arm.md</a>
+    <div class="neighbors">
+      <a href="https://github.com/alexxony/claude-delegation-policy">claude-delegation-policy <span class="tag">— 이 벤치마크가 검증하는 ORCH_RULE advisor 룰</span></a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var toggle = document.getElementById('orchToggle');
+  var stateLabel = document.getElementById('toggleState');
+  var ruleBody = document.getElementById('ruleBody');
+  var resultLine = document.getElementById('resultLine');
+
+  var rowsOff = [
+    { arm: 'arm1~5', task: 'T1~T5b', deleg: '안 함', signal: 'subagent 토큰 0', badge: 'off' },
+    { arm: 'arm7 (orch, Opus)', task: 'T1~T5b', deleg: '안 함', signal: '구조+모델 결합해도 여전히 0', badge: 'off' },
+    { arm: 'arm8 (orch, Fable)', task: 'T1~T5b', deleg: '안 함', signal: '실사용 우회 구성 재현해도 여전히 0', badge: 'off' }
+  ];
+  var rowsOn = [
+    { arm: 'arm6 (Sonnet)', task: 'T2', deleg: '함 (1회)', signal: 'subagent 토큰 356,325 · 93초 vs baseline 40초대', badge: 'on' },
+    { arm: 'arm9 (Fable)', task: 'T2', deleg: '함 (1회)', signal: '123초, spawn 오버헤드', badge: 'on' },
+    { arm: 'arm9 (Fable)', task: 'T4', deleg: '함 (1회)', signal: 'subagent 토큰 총 1,458,380(위임 2회 합산) · 183초', badge: 'on' }
+  ];
+
+  function badgeHtml(b) {
+    return ' <span class="badge ' + b + '">' + (b === 'on' ? '위임됨' : '직접처리') + '</span>';
+  }
+
+  function render(on) {
+    var rows = on ? rowsOn : rowsOff;
+    ruleBody.innerHTML = rows.map(function (r) {
+      return '<tr class="rule-row">' +
+        '<td>' + r.arm + '</td>' +
+        '<td><code>' + r.task + '</code></td>' +
+        '<td>' + r.deleg + badgeHtml(r.badge) + '</td>' +
+        '<td>' + r.signal + '</td>' +
+        '</tr>';
+    }).join('');
+
+    if (on) {
+      stateLabel.textContent = 'ON — 세션 시작 시 advisor 지시문 주입됨';
+      resultLine.className = 'result-line on';
+      resultLine.innerHTML = '<span class="best">advisor=on 태스크 6개 중 3개에서 위임 발생.</span> 위임이 ' +
+        '발생할 때마다 직접 처리 대비 더 오래 걸림 — spawn 오버헤드, 공짜가 아니다.';
+    } else {
+      stateLabel.textContent = 'OFF — 위임 지시문 주입 안 됨';
+      resultLine.className = 'result-line off';
+      resultLine.innerHTML = '<span class="best">48개 태스크 중 위임 0건.</span> 구조(오케스트레이터+executor 하네스)도 ' +
+        '모델 티어(오케스트레이터=Opus·Fable)도 그 자체로는 위임을 유발하지 않음 — arm1~5, 7, 8.';
+    }
+  }
+
+  toggle.addEventListener('change', function () { render(toggle.checked); });
+  render(toggle.checked);
+})();
+</script>
+
+</body>
+</html>
